@@ -1,10 +1,8 @@
 const express = require("express");
 
 const app = express();
-
 const PORT = 3000;
 
-// Middleware to read JSON request bodies
 app.use(express.json());
 
 // In-memory tasks
@@ -62,8 +60,9 @@ app.get("/tasks/:id", (req, res) => {
     res.json(task);
 });
 
-// Create a new task
+// Create task
 app.post("/tasks", (req, res) => {
+
     const { title } = req.body;
 
     if (!title || title.trim() === "") {
@@ -74,13 +73,64 @@ app.post("/tasks", (req, res) => {
 
     const newTask = {
         id: tasks.length + 1,
-        title: title,
+        title,
         done: false
     };
 
     tasks.push(newTask);
 
     res.status(201).json(newTask);
+});
+
+// Update task
+app.put("/tasks/:id", (req, res) => {
+
+    const id = parseInt(req.params.id);
+
+    const task = tasks.find(task => task.id === id);
+
+    if (!task) {
+        return res.status(404).json({
+            error: `Task ${id} not found`
+        });
+    }
+
+    const { title, done } = req.body;
+
+    if (title !== undefined) {
+        if (title.trim() === "") {
+            return res.status(400).json({
+                error: "Title cannot be empty"
+            });
+        }
+        task.title = title;
+    }
+
+    if (done !== undefined) {
+        task.done = done;
+    }
+
+    res.json(task);
+
+});
+
+// Delete task
+app.delete("/tasks/:id", (req, res) => {
+
+    const id = parseInt(req.params.id);
+
+    const index = tasks.findIndex(task => task.id === id);
+
+    if (index === -1) {
+        return res.status(404).json({
+            error: `Task ${id} not found`
+        });
+    }
+
+    tasks.splice(index, 1);
+
+    res.status(204).send();
+
 });
 
 app.listen(PORT, () => {
