@@ -3,7 +3,31 @@ const express = require("express");
 const app = express();
 const PORT = 3000;
 
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+
 app.use(express.json());
+
+const options = {
+    definition: {
+        openapi: "3.0.0",
+        info: {
+            title: "Task API",
+            version: "1.0.0",
+            description: "A simple CRUD Task API"
+        },
+        servers: [
+            {
+                url: "http://localhost:3000"
+            }
+        ]
+    },
+    apis: ["./index.js"]
+};
+
+const swaggerSpec = swaggerJsdoc(options);
+
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // In-memory tasks
 let tasks = [
@@ -39,6 +63,16 @@ app.get("/health", (req, res) => {
         status: "ok"
     });
 });
+
+/**
+ * @swagger
+ * /tasks:
+ *   get:
+ *     summary: Get all tasks
+ *     responses:
+ *       200:
+ *         description: Returns all tasks
+ */
 
 // Get all tasks
 app.get("/tasks", (req, res) => {
