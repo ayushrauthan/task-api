@@ -5,6 +5,7 @@ const PORT = 3000;
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
+const Database = require("better-sqlite3");
 
 app.use(express.json());
 
@@ -29,24 +30,30 @@ const swaggerSpec = swaggerJsdoc(options);
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// In-memory tasks
-let tasks = [
-    {
-        id: 1,
-        title: "Learn Express",
-        done: false
-    },
-    {
-        id: 2,
-        title: "Build CRUD API",
-        done: false
-    },
-    {
-        id: 3,
-        title: "Push project to GitHub",
-        done: true
-    }
-];
+// SQLite Database
+const db = new Database("tasks.db");
+
+// Create table if it doesn't exist
+db.prepare(`
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0
+)
+`).run();
+
+// Insert sample tasks only if table is empty
+const count = db.prepare("SELECT COUNT(*) AS count FROM tasks").get();
+
+if (count.count === 0) {
+    const insert = db.prepare(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)"
+    );
+
+    insert.run("Learn Express", 0);
+    insert.run("Build CRUD API", 0);
+    insert.run("Push project to GitHub", 1);
+}
 
 // Root Endpoint
 app.get("/", (req, res) => {
