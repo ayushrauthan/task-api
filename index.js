@@ -1,11 +1,13 @@
+require("dotenv").config();
+
 const express = require("express");
-
-const app = express();
-const PORT = 3000;
-
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
-const Database = require("better-sqlite3");
+
+const repository = require("./repository/postgresRepository");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -19,7 +21,7 @@ const options = {
         },
         servers: [
             {
-                url: "http://localhost:3000"
+                url: `http://localhost:${PORT}`
             }
         ]
     },
@@ -29,31 +31,6 @@ const options = {
 const swaggerSpec = swaggerJsdoc(options);
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// SQLite Database
-const db = new Database("tasks.db");
-
-// Create table if it doesn't exist
-db.prepare(`
-CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    done INTEGER NOT NULL DEFAULT 0
-)
-`).run();
-
-// Insert sample tasks only if table is empty
-const count = db.prepare("SELECT COUNT(*) AS count FROM tasks").get();
-
-if (count.count === 0) {
-    const insert = db.prepare(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)"
-    );
-
-    insert.run("Learn Express", 0);
-    insert.run("Build CRUD API", 0);
-    insert.run("Push project to GitHub", 1);
-}
 
 // Root Endpoint
 app.get("/", (req, res) => {
@@ -82,96 +59,118 @@ app.get("/health", (req, res) => {
  */
 
 // Get all tasks
-app.get("/tasks", (req, res) => {
-    res.json(tasks);
+app.get("/tasks", async (req, res) => {
+    try {
+        const tasks = await repository.getAllTasks();
+        res.json(tasks);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Internal server error"
+        });
+    }
 });
 
 // Get task by ID
-app.get("/tasks/:id", (req, res) => {
-    const id = parseInt(req.params.id);
+app.get("/tasks/:id", async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
 
-    const task = tasks.find(task => task.id === id);
+        const task = await repository.getTaskById(id);
 
-    if (!task) {
-        return res.status(404).json({
-            error: `Task ${id} not found`
+        if (!task) {
+            return res.status(404).json({
+                error: `Task ${id} not found`
+            });
+        }
+
+        res.json(task);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Internal server error"
         });
     }
-
-    res.json(task);
 });
 
 // Create task
-app.post("/tasks", (req, res) => {
+app.post("/tasks", async (req, res) => {
+    try {
+        const { title } = req.body;
 
-    const { title } = req.body;
+        if (!title || title.trim() === "") {
+            return res.status(400).json({
+                error: "Title is required"
+            });
+        }
 
-    if (!title || title.trim() === "") {
-        return res.status(400).json({
-            error: "Title is required"
+        const newTask = await repository.createTask(title);
+
+        res.status(201).json(newTask);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Internal server error"
         });
     }
-
-    const newTask = {
-        id: tasks.length + 1,
-        title,
-        done: false
-    };
-
-    tasks.push(newTask);
-
-    res.status(201).json(newTask);
 });
 
 // Update task
-app.put("/tasks/:id", (req, res) => {
+app.put("/tasks/:id", async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
 
-    const id = parseInt(req.params.id);
+        const existingTask = await repository.getTaskById(id);
 
-    const task = tasks.find(task => task.id === id);
+        if (!existingTask) {
+            return res.status(404).json({
+                error: `Task ${id} not found`
+            });
+        }
 
-    if (!task) {
-        return res.status(404).json({
-            error: `Task ${id} not found`
-        });
-    }
+        const { title, done } = req.body;
 
-    const { title, done } = req.body;
-
-    if (title !== undefined) {
-        if (title.trim() === "") {
+        if (title !== undefined && title.trim() === "") {
             return res.status(400).json({
                 error: "Title cannot be empty"
             });
         }
-        task.title = title;
+
+        const updatedTask = await repository.updateTask(
+            id,
+            title,
+            done
+        );
+
+        res.json(updatedTask);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Internal server error"
+        });
     }
-
-    if (done !== undefined) {
-        task.done = done;
-    }
-
-    res.json(task);
-
 });
 
 // Delete task
-app.delete("/tasks/:id", (req, res) => {
+app.delete("/tasks/:id", async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
 
-    const id = parseInt(req.params.id);
+        const deletedTask = await repository.deleteTask(id);
 
-    const index = tasks.findIndex(task => task.id === id);
+        if (!deletedTask) {
+            return res.status(404).json({
+                error: `Task ${id} not found`
+            });
+        }
 
-    if (index === -1) {
-        return res.status(404).json({
-            error: `Task ${id} not found`
+        res.status(204).send();
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Internal server error"
         });
     }
-
-    tasks.splice(index, 1);
-
-    res.status(204).send();
-
 });
 
 app.listen(PORT, () => {
