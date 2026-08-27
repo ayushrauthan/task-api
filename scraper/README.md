@@ -95,6 +95,28 @@ The canonical absolute `product_url` is the record identity, so duplicate URLs a
 
 Generated output is ignored by Git except for an optional `.gitkeep`; cached HTML is always ignored.
 
+## Verified real run
+
+GitHub Actions ran the scraper against the live sandbox on 2026-08-27. The run passed all five parser tests and the A9 output checks.
+
+```json
+{
+  "start_time": "2026-08-27T16:39:29.387Z",
+  "duration_ms": 31064,
+  "catalogue_pages": 3,
+  "discovered": 60,
+  "unique_urls": 60,
+  "detail_pages": 60,
+  "pages_fetched": 63,
+  "cache_hits": 0,
+  "valid_records": 60,
+  "invalid_records": 0,
+  "failed_pages": 0
+}
+```
+
+The 63 network fetches are the 3 catalogue pages plus the 60 detail pages. A later development rerun uses the cache instead of re-requesting those pages.
+
 ## Checkpoints
 
 A clean run should report:
