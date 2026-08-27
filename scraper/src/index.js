@@ -1,13 +1,24 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
 import { PoliteFetcher } from './fetcher.js';
 import { parseBook, parseCatalogue } from './parser.js';
+import { normalizeRecord, validateRecord } from './schema.js';
 
 const BASE_URL = 'https://books.toscrape.com/';
 const ROOT_DIR = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CACHE_DIR = path.join(ROOT_DIR, 'cache');
+const OUTPUT_DIR = path.join(ROOT_DIR, 'output');
 
-async function discoverBooks(fetcher) {
+const detailCacheName = (url) => `detail-${crypto.createHash('sha256').update(url).digest('hex').slice(0, 24)}.html`;
+
+async function writeJson(fileName, value) {
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+  await fs.writeFile(path.join(OUTPUT_DIR, fileName), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+export async function discoverBooks(fetcher) {
   const cataloguePages = [];
   const discovered = [];
   let pageUrl = BASE_URL;
@@ -31,28 +42,48 @@ async function discoverBooks(fetcher) {
   return { cataloguePages, discovered, unique };
 }
 
-async function extractBooks(fetcher, uniqueBooks) {
-  const records = [];
+export async function extractAndValidate(fetcher, uniqueBooks) {
+  const validRecords = [];
+  const errors = [];
+
   for (const [productUrl, sourcePage] of uniqueBooks) {
-    const cacheKey = `detail-${Buffer.from(productUrl).toString('base64url').slice(0, 50)}.html`;
-    const result = await fetcher.fetch(productUrl, { preferredName: cacheKey });
-    records.push(parseBook(result.html, productUrl, sourcePage, result.fetchedAt));
+    try {
+      const result = await fetcher.fetch(productUrl, { preferredName: detailCacheName(productUrl) });
+      const raw = parseBook(result.html, productUrl, sourcePage, result.fetchedAt);
+      const normalized = normalizeRecord(raw);
+      const validation = validateRecord(normalized);
+
+      if (!validation.success) {
+        errors.push({ product_url: productUrl, reason: validation.error.issues.map((issue) => issue.message).join('; ') });
+        continue;
+      }
+      validRecords.push(validation.data);
+    } catch (error) {
+      errors.push({ product_url: productUrl, reason: error.message });
+    }
   }
-  return records;
+
+  return { validRecords, errors };
 }
 
 async function main() {
   const fetcher = new PoliteFetcher({ cacheDir: CACHE_DIR });
-  const result = await discoverBooks(fetcher);
-  const records = await extractBooks(fetcher, result.unique);
+  const discovered = await discoverBooks(fetcher);
+  const { validRecords, errors } = await extractAndValidate(fetcher, discovered.unique);
 
-  console.log(`catalogue_pages=${result.cataloguePages.length}`);
-  console.log(`discovered=${result.discovered.length}`);
-  console.log(`unique_urls=${result.unique.size}`);
-  console.log(`detail_pages=${records.length}`);
-  console.log(JSON.stringify(records[0], null, 2));
+  const uniqueRecords = [...new Map(validRecords.map((record) => [record.product_url, record])).values()];
+  await writeJson('books.json', uniqueRecords);
+  await writeJson('errors.json', errors);
+
+  console.log(`catalogue_pages=${discovered.cataloguePages.length}`);
+  console.log(`discovered=${discovered.discovered.length}`);
+  console.log(`unique_urls=${discovered.unique.size}`);
+  console.log(`detail_pages=${discovered.unique.size}`);
+  console.log(`valid_records=${uniqueRecords.length}`);
+  console.log(`invalid_records=${errors.length}`);
   console.log(`pages_fetched=${fetcher.stats.pagesFetched}`);
   console.log(`cache_hits=${fetcher.stats.cacheHits}`);
+  if (uniqueRecords[0]) console.log(JSON.stringify(uniqueRecords[0], null, 2));
 }
 
 main().catch((error) => {
