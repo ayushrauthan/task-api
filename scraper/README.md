@@ -42,7 +42,7 @@ Failure demonstration:
 npm run failure-test
 ```
 
-This adds a deliberately fake URL locally, without making any additional request to the real site beyond the normal run.
+This adds a deliberately fake `.invalid` URL locally, so the failure test does not deliberately request a real broken page on the sandbox.
 
 Tests:
 
@@ -75,7 +75,7 @@ Each detail page produces all eight raw fields:
   "rating_text": "Three",
   "description": "...",
   "source_page": "https://books.toscrape.com/catalogue/page-1.html",
-  "fetched_at": "2026-08-27T00:00:00.000Z"
+  "fetched_at": "2026-08-27T10:00:00.000Z"
 }
 ```
 
@@ -101,8 +101,8 @@ GitHub Actions ran the scraper against the live sandbox on 2026-08-27. The run p
 
 ```json
 {
-  "start_time": "2026-08-27T16:39:29.387Z",
-  "duration_ms": 31064,
+  "start_time": "2026-08-27T16:39:25.189Z",
+  "duration_ms": 31080,
   "catalogue_pages": 3,
   "discovered": 60,
   "unique_urls": 60,
@@ -130,7 +130,7 @@ A clean run should report:
 
 A rerun should still produce exactly 60 records and should mostly use the cache.
 
-`npm run failure-test` deliberately adds one fake detail URL. The run must finish, retain the 60 valid records, and report `failed_pages: 1`.
+`npm run failure-test` deliberately adds one fake `.invalid` URL. The run must finish, retain the 60 valid records, and report `failed_pages: 1`.
 
 ## Why no browser?
 
