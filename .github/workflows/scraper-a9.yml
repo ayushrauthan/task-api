@@ -26,6 +26,11 @@ jobs:
       - run: npm install
       - run: npm test
       - run: npm start
-      - name: Check A9 outputs
+      - name: Check clean A9 outputs
         run: |
           node -e "const fs=require('fs'); const books=JSON.parse(fs.readFileSync('output/books.json')); const report=JSON.parse(fs.readFileSync('output/run-report.json')); if(books.length!==60) throw new Error('Expected 60 books, got '+books.length); if(report.failed_pages!==0) throw new Error('Expected clean run'); if(report.unique_urls!==60) throw new Error('Expected 60 unique URLs'); console.log(report)"
+      - run: npm run failure-test
+      - name: Check broken-page survival
+        run: |
+          node -e "const fs=require('fs'); const books=JSON.parse(fs.readFileSync('output/books.json')); const report=JSON.parse(fs.readFileSync('output/run-report.json')); if(books.length!==60) throw new Error('Good records did not survive'); if(report.failed_pages!==1) throw new Error('Expected one failed page'); console.log(report)"
+      - run: npm start
