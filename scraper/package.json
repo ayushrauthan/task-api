@@ -1,0 +1,19 @@
+{
+  "name": "flyrank-a9-polite-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FlyRank Backend Track Week 5 Assignment A9 - a polite Books to Scrape pipeline",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "failure-test": "node src/index.js --inject-failure",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "zod": "^4.1.5"
+  }
+}
