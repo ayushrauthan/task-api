@@ -10,7 +10,6 @@ const BASE_URL = 'https://books.toscrape.com/';
 const ROOT_DIR = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CACHE_DIR = path.join(ROOT_DIR, 'cache');
 const OUTPUT_DIR = path.join(ROOT_DIR, 'output');
-
 const detailCacheName = (url) => `detail-${crypto.createHash('sha256').update(url).digest('hex').slice(0, 24)}.html`;
 
 async function writeJson(fileName, value) {
@@ -45,6 +44,8 @@ export async function discoverBooks(fetcher) {
 export async function extractAndValidate(fetcher, uniqueBooks) {
   const validRecords = [];
   const errors = [];
+  const failures = [];
+  let invalidRecords = 0;
 
   for (const [productUrl, sourcePage] of uniqueBooks) {
     try {
@@ -54,39 +55,92 @@ export async function extractAndValidate(fetcher, uniqueBooks) {
       const validation = validateRecord(normalized);
 
       if (!validation.success) {
-        errors.push({ product_url: productUrl, reason: validation.error.issues.map((issue) => issue.message).join('; ') });
+        invalidRecords += 1;
+        errors.push({ product_url: productUrl, type: 'validation', reason: validation.error.issues.map((issue) => issue.message).join('; ') });
         continue;
       }
       validRecords.push(validation.data);
     } catch (error) {
-      errors.push({ product_url: productUrl, reason: error.message });
+      failures.push({ product_url: productUrl, reason: error.message });
+      errors.push({ product_url: productUrl, type: 'fetch_or_parse', reason: error.message });
     }
   }
 
-  return { validRecords, errors };
+  return { validRecords, errors, failures, invalidRecords };
 }
 
-async function main() {
+export async function run({ injectFailure = false } = {}) {
+  const startedAt = new Date();
   const fetcher = new PoliteFetcher({ cacheDir: CACHE_DIR });
-  const discovered = await discoverBooks(fetcher);
-  const { validRecords, errors } = await extractAndValidate(fetcher, discovered.unique);
+  let discovered = { cataloguePages: [], discovered: [], unique: new Map() };
+  let validRecords = [];
+  let errors = [];
+  let failures = [];
+  let invalidRecords = 0;
+  let fatalError = null;
 
-  const uniqueRecords = [...new Map(validRecords.map((record) => [record.product_url, record])).values()];
-  await writeJson('books.json', uniqueRecords);
-  await writeJson('errors.json', errors);
+  try {
+    discovered = await discoverBooks(fetcher);
+    if (injectFailure) {
+      discovered.unique.set('https://example.invalid/flyrank-a9-deliberate-failure', BASE_URL);
+    }
 
-  console.log(`catalogue_pages=${discovered.cataloguePages.length}`);
-  console.log(`discovered=${discovered.discovered.length}`);
-  console.log(`unique_urls=${discovered.unique.size}`);
-  console.log(`detail_pages=${discovered.unique.size}`);
-  console.log(`valid_records=${uniqueRecords.length}`);
-  console.log(`invalid_records=${errors.length}`);
-  console.log(`pages_fetched=${fetcher.stats.pagesFetched}`);
-  console.log(`cache_hits=${fetcher.stats.cacheHits}`);
-  if (uniqueRecords[0]) console.log(JSON.stringify(uniqueRecords[0], null, 2));
+    ({ validRecords, errors, failures, invalidRecords } = await extractAndValidate(fetcher, discovered.unique));
+    const uniqueRecords = [...new Map(validRecords.map((record) => [record.product_url, record])).values()];
+    await writeJson('books.json', uniqueRecords);
+    await writeJson('errors.json', errors);
+
+    const report = {
+      start_time: startedAt.toISOString(),
+      duration_ms: Date.now() - startedAt.getTime(),
+      catalogue_pages: discovered.cataloguePages.length,
+      discovered: discovered.discovered.length,
+      unique_urls: discovered.unique.size,
+      detail_pages: discovered.unique.size,
+      pages_fetched: fetcher.stats.pagesFetched,
+      cache_hits: fetcher.stats.cacheHits,
+      valid_records: uniqueRecords.length,
+      invalid_records: invalidRecords,
+      failed_pages: failures.length,
+    };
+    await writeJson('run-report.json', report);
+    return { report, records: uniqueRecords, errors, failures };
+  } catch (error) {
+    fatalError = error;
+    const report = {
+      start_time: startedAt.toISOString(),
+      duration_ms: Date.now() - startedAt.getTime(),
+      catalogue_pages: discovered.cataloguePages.length,
+      discovered: discovered.discovered.length,
+      unique_urls: discovered.unique.size,
+      detail_pages: discovered.unique.size,
+      pages_fetched: fetcher.stats.pagesFetched,
+      cache_hits: fetcher.stats.cacheHits,
+      valid_records: validRecords.length,
+      invalid_records: invalidRecords,
+      failed_pages: failures.length + 1,
+      fatal_error: error.message,
+    };
+    await writeJson('run-report.json', report);
+    throw fatalError;
+  }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+const injectFailure = process.argv.includes('--inject-failure');
+run({ injectFailure })
+  .then(({ report, records }) => {
+    console.log(`catalogue_pages=${report.catalogue_pages}`);
+    console.log(`discovered=${report.discovered}`);
+    console.log(`unique_urls=${report.unique_urls}`);
+    console.log(`detail_pages=${report.detail_pages}`);
+    console.log(`valid_records=${records.length}`);
+    console.log(`invalid_records=${report.invalid_records}`);
+    console.log(`failed_pages=${report.failed_pages}`);
+    console.log(`pages_fetched=${report.pages_fetched}`);
+    console.log(`cache_hits=${report.cache_hits}`);
+    if (records[0]) console.log(JSON.stringify(records[0], null, 2));
+  })
+  .catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
