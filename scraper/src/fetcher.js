@@ -27,8 +27,9 @@ export class PoliteFetcher {
     const file = cachePathFor(url, this.cacheDir, preferredName);
     try {
       const html = await fs.readFile(file, 'utf8');
+      const stat = await fs.stat(file);
       this.stats.cacheHits += 1;
-      return { html, cachePath: file };
+      return { html, cachePath: file, fetchedAt: stat.mtime.toISOString() };
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       return null;
@@ -62,9 +63,10 @@ export class PoliteFetcher {
 
         if (response.status === 200) {
           const html = await response.text();
+          const fetchedAt = new Date().toISOString();
           await fs.writeFile(file, html, 'utf8');
           this.stats.pagesFetched += 1;
-          return { html, cachePath: file, fromCache: false, status: 200 };
+          return { html, cachePath: file, fromCache: false, status: 200, fetchedAt };
         }
 
         const retryable = response.status >= 500 && response.status <= 599;
