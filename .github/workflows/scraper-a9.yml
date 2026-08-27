@@ -1,0 +1,33 @@
+name: FlyRank A9 scraper checks
+
+on:
+  pull_request:
+    paths:
+      - 'scraper/**'
+      - '.github/workflows/scraper-a9.yml'
+  push:
+    branches:
+      - a9-polite-scraper
+    paths:
+      - 'scraper/**'
+      - '.github/workflows/scraper-a9.yml'
+
+jobs:
+  test-and-scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: scraper/package.json
+      - run: npm install
+      - run: npm test
+      - run: npm start
+      - name: Check A9 outputs
+        run: |
+          node -e "const fs=require('fs'); const books=JSON.parse(fs.readFileSync('output/books.json')); const report=JSON.parse(fs.readFileSync('output/run-report.json')); if(books.length!==60) throw new Error('Expected 60 books, got '+books.length); if(report.failed_pages!==0) throw new Error('Expected clean run'); if(report.unique_urls!==60) throw new Error('Expected 60 unique URLs'); console.log(report)"
